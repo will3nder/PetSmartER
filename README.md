@@ -37,4 +37,6 @@ This ensures the FT232H is available for direct access via libftdi.
 ## References
 
 - [Adafruit FT232H Guide](https://learn.adafruit.com/adafruit-ft232h-breakout)
-- [Adafruit RFM9x LoRa Radio Guide](https://learn.adafruit.com/adafruit-rfm69hcw-and-rfm9x-lora-packet-radio-breakouts)
+- [Adafruit RFM9x LoRa Radio Guide](https://learn.adafruit.com/adafruit-rfm69hcw-and-rfm96-rfm95-rfm98-lora-packet-padio-breakouts/pinouts)
+- [FTDI Chip LibMPSSE-SPI Examples](https://ftdichip.com/software-examples/mpsse-projects/libmpsse-spi-examples/)
+- [libFTDI Open Source Library](https://www.intra2net.com/en/developer/libftdi/)
