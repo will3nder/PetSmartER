@@ -29,8 +29,8 @@ int main() {
             std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Small delay
         }
 
-    } catch (const std::exception& e) {
+    } catch (const std::exception& exception) {
         // Print error message if exception occurs
-        std::cerr << "ERROR: " << e.what() << std::endl;
+        std::cerr << "ERROR: " << exception.what() << std::endl;
     }
 }

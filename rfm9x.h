@@ -6,7 +6,7 @@
 class RFM9x {
 public:
      // Constructor: takes reference to SPI interface
-     RFM9x(FT232H_SPI& spi);
+     RFM9x(FT232H_SPI& spiInterface);
 
      // Initializes the radio (reset, LoRa mode)
      void begin();

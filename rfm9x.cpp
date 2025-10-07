@@ -5,7 +5,7 @@
 // Implementation of RFM9x LoRa radio class
 
 // Constructor: stores reference to SPI interface
-RFM9x::RFM9x(FT232H_SPI& s) : spi(s) {}
+RFM9x::RFM9x(FT232H_SPI& spiInterface) : spi(spiInterface) {}
 
 // Initializes the radio: performs hardware reset and sets LoRa mode
 void RFM9x::begin() {
