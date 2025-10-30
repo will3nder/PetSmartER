@@ -20,6 +20,8 @@
 #define GPS_RX D0       // GPS RX
 
 #define LORA_FREQUENCY 915E6
+#define NODE_ID   "7454.1974"   // unique node identifier xxxx.xxxx
+#define SERVER_ID "0681.7478"   // paired server ID xxxx.xxxx
 
 // timing (ms)
 const uint32_t GPS_COLLECTION_MS = 5000;
@@ -82,7 +84,9 @@ void loop() {
   }
 
   // send, wait ACK, retry once
-  String payload = ok ? String(lat, 6) + "," + String(lon, 6) : String("0,0");
+  String payload = String(NODE_ID) + "," +
+                   (ok ? String(lat, 6) + "," + String(lon, 6) : "0,0") +
+                   "," + String(SERVER_ID);
   sendPacketWithRetry(payload);
 
   // shut peripherals down
@@ -185,13 +189,14 @@ bool getGpsFix(float &outLat, float &outLon) {
 // -------- LoRa comms --------
 bool waitForAck(uint32_t timeout_ms) {
   unsigned long t0 = millis();
+  String expect = String("ACK:") + NODE_ID + ":" + SERVER_ID;
   while (millis() - t0 < timeout_ms) {
     int sz = LoRa.parsePacket();
     if (sz > 0) {
       String s;
       while (LoRa.available()) s += (char)LoRa.read();
       s.trim();
-      if (s == "ACK") return true;
+      if (s == expect) return true;
     }
     delay(10);
   }
