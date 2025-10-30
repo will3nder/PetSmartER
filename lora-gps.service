@@ -1,0 +1,15 @@
+[Unit]
+Description=LoRa GPS Server
+After=network.target
+
+[Service]
+Type=simple
+User=yourusername
+Environment=BLINKA_FT232H=1
+WorkingDirectory=/home/yourusername/lora-gps
+ExecStart=/home/yourusername/lora-gps/.env/bin/python /home/yourusername/lora-gps/server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
