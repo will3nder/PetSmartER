@@ -37,7 +37,8 @@ void setup() {
   Serial.begin(115200);
   while (!Serial);
   Serial.println("XIAO RA4M1 LoRa GPS Node Starting...");
-
+  delay(1000);
+  
   // GPS power and UART
   pinMode(GPS_EN, OUTPUT);
   digitalWrite(GPS_EN, HIGH);
@@ -45,9 +46,21 @@ void setup() {
   Serial.println("GPS UART initialized.");
 
   // LoRa power and SPI
+
+  SPI.begin();
+  
   pinMode(LORA_EN, OUTPUT);
   digitalWrite(LORA_EN, HIGH);
+  delay(1000);
+
+  pinMode(LORA_RST, OUTPUT);
+  digitalWrite(LORA_RST, LOW);
+  delay(1000);
+  digitalWrite(LORA_RST, HIGH);
+  delay(1000);
+
   LoRa.setPins(LORA_CS, LORA_RST, LORA_G0);
+  delay(1000);
   if (!LoRa.begin(LORA_FREQ)) {
     Serial.println("LoRa initialization Failed!");
     while (1);
