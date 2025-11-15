@@ -39,9 +39,15 @@
 #define ALERT_LON_MIN       -105.28050
 #define ALERT_LON_MAX       -105.28000
 
-#define SERVO_PIN           0
+#define SERVO_PIN           5
 #define ANGLE_SAFE          0
 #define ANGLE_ALERT         90
+uint8_t currentAngle;
+
+#define R_LED               13 
+#define G_LED               12
+#define B_LED               11
+
 
 // ===================================
 // Global Objects
@@ -140,7 +146,6 @@ void generateTestFix() {
 }
 
 void handleRoot() {
-    // FIX: Increased buffer size to safely accommodate the large HTML_PAGE template
     char body[1024]; 
     String table = generateTable();
     snprintf(body, sizeof(body), HTML_PAGE, table.c_str());
@@ -154,6 +159,9 @@ void setup() {
     Serial.begin(115200);
     while (!Serial) delay(10);
     delay(1000);
+
+    pinMode(B_LED, OUTPUT);
+    digitalWrite(B_LED, HIGH);
 
     Serial.println("Starting AP...");
     WiFi.mode(WIFI_AP);
@@ -174,10 +182,11 @@ void setup() {
     LoRa.setTxPower(20);
     Serial.println("LoRa ready");
 
-    if (!servoMotor.attach(SERVO_PIN, 500, 2500)) {
+    if (!servoMotor.attach(SERVO_PIN, 1000, 2000)) {
         Serial.println("Servo attach failed!");
     } else {
         servoMotor.write(ANGLE_SAFE);
+        currentAngle = ANGLE_SAFE;
         Serial.printf("Servo at %d degrees\n", ANGLE_SAFE);
     }
 
@@ -194,10 +203,15 @@ void setup() {
     Serial.println("Listening...");
 }
 
+uint16_t counter = 0;
+
 // ===================================
 // Main Loop
 // ===================================
 void loop() {
+
+    servoMotor.write(currentAngle);
+
     server.handleClient();
 
     unsigned long now = millis();
@@ -208,9 +222,11 @@ void loop() {
 
         if (inGeofence(latest.lat, latest.lon)) {
             servoMotor.write(ANGLE_ALERT);
+            currentAngle = ANGLE_ALERT;
             Serial.println("TEST: IN ZONE");
         } else {
             servoMotor.write(ANGLE_SAFE);
+            currentAngle = ANGLE_SAFE;
             Serial.println("TEST: OUT");
         }
         nextTest = now + INTERVAL * 1000;
@@ -246,9 +262,11 @@ void loop() {
 
                 if (inGeofence(latest.lat, latest.lon)) {
                     servoMotor.write(ANGLE_ALERT);
+                    currentAngle = ANGLE_ALERT;
                     Serial.println("IN ALERT AREA!");
                 } else {
                     servoMotor.write(ANGLE_SAFE);
+                    currentAngle = ANGLE_SAFE;
                     Serial.println("Outside area.");
                 }
 
@@ -263,5 +281,10 @@ void loop() {
         }
     }
 
-    delay(1);
+   counter++;
+   if(counter % 65535 == 0){
+    digitalWrite(B_LED, LOW);
+    delay(1000);
+    digitalWrite(B_LED, HIGH);
+   }
 }
