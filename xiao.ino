@@ -1,158 +1,130 @@
-#include <SPI.h>
-#include <LoRa.h>
-#include <SoftwareSerial.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
 #include <TinyGPSPlus.h>
+#include <SoftwareSerial.h>
 
-// Pin assignments for XIAO RA4M1
-#define GPS_TX    D0
-#define GPS_RX    D1
-#define GPS_PPS   D2
-#define GPS_EN    D3
-#define LORA_RST  D4
-#define LORA_EN   D5
-#define LORA_G0   D6
-#define LORA_CS   D7
-#define LORA_SCK  D8
-#define LORA_MISO D9
-#define LORA_MOSI D10
+// ==================== CONFIG ====================
+const char* ssid     = "PetSmartER";
+const char* password = "pets1234";
+const char* serverUrl = "http://192.168.42.1/data";   // ESP32 AP IP
 
-// Node configuration
 #define NODE_ID       "7454.1974"
 #define SERVER_ID     "0681.7478"
-#define LORA_FREQ     915E6
-#define TX_POWER      20
-#define GPS_BAUD      9600
-#define SEND_INTERVAL 180000   // 3 minutes
+
+#define GPS_TX    D0
+#define GPS_RX    D1
+#define GPS_EN    D3
+
+#define SEND_INTERVAL 180000   // 3 minutes in ms
+// ================================================
 
 SoftwareSerial GPS_SERIAL(GPS_TX, GPS_RX);
 TinyGPSPlus gps;
-unsigned long lastSendTime = 0;
 
-// Function prototypes
-void onReceive(int packetSize);
-void sendPacket(double lat, double lon);
-void checkSerialCommand();
+unsigned long lastSendTime = 0;
+bool wifiConnected = false;
+
+void connectWiFi() {
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  uint8_t attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) {  // ~20 s timeout
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi connected!");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+    wifiConnected = true;
+  } else {
+    Serial.println("\nWiFi failed");
+    wifiConnected = false;
+  }
+}
+
+void sendPosition(double lat, double lon) {
+  if (!wifiConnected) return;
+
+  HTTPClient http;
+  http.begin(serverUrl);
+  http.addHeader("Content-Type", "text/plain");
+
+  char payload[80];
+  snprintf(payload, sizeof(payload), "%s,%.6f,%.6f,%s",
+           NODE_ID, lat, lon, SERVER_ID);
+
+  Serial.print("HTTP POST: ");
+  Serial.println(payload);
+
+  int httpCode = http.POST(payload);
+
+  if (httpCode > 0) {
+    Serial.printf("HTTP %d\n", httpCode);
+    if (httpCode == 200) {
+      String response = http.getString();
+      Serial.println("Server says: " + response);
+    }
+  } else {
+    Serial.printf("HTTP failed: %s\n", http.errorToString(httpCode).c_str());
+  }
+  http.end();
+}
 
 void setup() {
   Serial.begin(115200);
   while (!Serial);
-  Serial.println("XIAO RA4M1 LoRa GPS Node Starting...");
-  delay(1000);
-  
-  // GPS power and UART
+
+  // Power on GPS module
   pinMode(GPS_EN, OUTPUT);
   digitalWrite(GPS_EN, HIGH);
-  GPS_SERIAL.begin(GPS_BAUD);
-  Serial.println("GPS UART initialized.");
+  GPS_SERIAL.begin(9600);
+  Serial.println("XIAO RA4M1 WiFi GPS Node Starting...");
 
-  // LoRa power and SPI
-
-  SPI.begin();
-  
-  pinMode(LORA_EN, OUTPUT);
-  digitalWrite(LORA_EN, HIGH);
-  delay(1000);
-
-  pinMode(LORA_RST, OUTPUT);
-  digitalWrite(LORA_RST, LOW);
-  delay(1000);
-  digitalWrite(LORA_RST, HIGH);
-  delay(1000);
-
-  LoRa.setPins(LORA_CS, LORA_RST, LORA_G0);
-  delay(1000);
-  if (!LoRa.begin(LORA_FREQ)) {
-    Serial.println("LoRa initialization Failed!");
-    while (1);
-  }
-
-  LoRa.setTxPower(TX_POWER);
-  LoRa.onReceive(onReceive);
-  LoRa.receive();
-
-  Serial.print("LoRa initialized OK on ");
-  Serial.print(LORA_FREQ / 1000000);
-  Serial.println(" MHz.");
+  connectWiFi();
 }
 
 void loop() {
-  // Parse any incoming GPS data
+  // Feed GPS parser
   while (GPS_SERIAL.available() > 0) {
     gps.encode(GPS_SERIAL.read());
   }
 
-  // Allow manual packet send via Serial Monitor
-  checkSerialCommand();
-
-  // Periodic automatic transmission
-  if (millis() - lastSendTime > SEND_INTERVAL) {
-    if (gps.location.isValid()) {
-      double lat = gps.location.lat();
-      double lon = gps.location.lng();
-      sendPacket(lat, lon);
-      lastSendTime = millis();
-    } else {
-      Serial.print("No valid GPS fix. Satellites: ");
-      Serial.println(gps.satellites.value());
-    }
+  // Reconnect if WiFi dropped
+  if (WiFi.status() != WL_CONNECTED && millis() > 30000) {
+    Serial.println("WiFi lost, reconnecting...");
+    connectWiFi();
+    delay(5000);
   }
-}
 
-// Build and send a LoRa packet: NODE_ID,lat,lon,SERVER_ID
-void sendPacket(double lat, double lon) {
-  char message[60];
-  snprintf(message, sizeof(message), "%s,%.6f,%.6f,%s",
-           NODE_ID, lat, lon, SERVER_ID);
-  Serial.print("Sending packet: ");
-  Serial.println(message);
-  LoRa.beginPacket();
-  LoRa.print(message);
-  LoRa.endPacket(true);   // wait for completion
-  Serial.println("Packet sent.");
-}
-
-// Handle 'send(lat,lon)' commands from Serial Monitor
-void checkSerialCommand() {
+  // Manual command from Serial Monitor: send(40.01666,-105.28000)
   if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
-    if (command.startsWith("send(") && command.endsWith(")")) {
-      Serial.println("Serial command recognized.");
-      int start = command.indexOf('(') + 1;
-      int end   = command.indexOf(')');
-      if (start > 0 && end > start) {
-        String data = command.substring(start, end);
-        int commaPos = data.indexOf(',');
-        if (commaPos != -1) {
-          double lat = data.substring(0, commaPos).toDouble();
-          double lon = data.substring(commaPos + 1).toDouble();
-          Serial.print("Manual send: Lat=");
-          Serial.print(lat, 6);
-          Serial.print(", Lon=");
-          Serial.println(lon, 6);
-          sendPacket(lat, lon);
-        } else {
-          Serial.println("Error: Invalid format. Use send(lat,lon).");
-        }
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    if (cmd.startsWith("send(") && cmd.endsWith(")")) {
+      int s = cmd.indexOf('(') + 1;
+      int e = cmd.indexOf(')');
+      String data = cmd.substring(s, e);
+      int comma = data.indexOf(',');
+      if (comma != -1) {
+        double lat = data.substring(0, comma).toDouble();
+        double lon = data.substring(comma + 1).toDouble();
+        sendPosition(lat, lon);
       }
     }
   }
-}
 
-// Process incoming LoRa packets (ACKs)
-void onReceive(int packetSize) {
-  if (packetSize) {
-    String incoming = "";
-    while (LoRa.available()) {
-      incoming += (char)LoRa.read();
-    }
-    if (incoming.startsWith("ACK:") && incoming.indexOf(NODE_ID) != -1) {
-      Serial.print("ACK received: ");
-      Serial.println(incoming);
+  // Periodic send
+  if (millis() - lastSendTime >= SEND_INTERVAL) {
+    if (gps.location.isValid()) {
+      double lat = gps.location.lat();
+      double lon = gps.location.lng();
+      sendPosition(lat, lon);
+      lastSendTime = millis();
     } else {
-      Serial.print("Unrecognized packet: ");
-      Serial.println(incoming);
+      Serial.print("No GPS fix yet. Sats: ");
+      Serial.println(gps.satellites.value());
     }
   }
-  LoRa.receive();   // back to receive mode
 }
