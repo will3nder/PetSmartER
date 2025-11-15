@@ -156,12 +156,16 @@ void unlockDoor() {
   currentAngle = ANGLE_UNLOCKED; // Update the global state
   servoMotor.write(currentAngle);
   Serial.println("DOOR UNLOCKED");
+  digitalWrite(R_LED, LOW);
+  digitalWrite(G_LED, HIGH);
 }
 
 void lockDoor() {
   currentAngle = ANGLE_LOCKED; // Update the global state
   servoMotor.write(currentAngle);
   Serial.println("DOOR LOCKED");
+  digitalWrite(R_LED, HIGH);
+  digitalWrite(G_LED, LOW);
 }
 
 void handleRoot() {
@@ -231,6 +235,8 @@ void setup() {
   TFLMSerial.begin(9600);
   Serial.printf("TFLM UART listener started on RX=%d, TX=%d\n", PIN_TFLM_RX, PIN_TFLM_TX);
 
+  pinMode(R_LED, OUTPUT);
+  pinMode(G_LED, OUTPUT);
   pinMode(B_LED, OUTPUT);
   digitalWrite(B_LED, HIGH);
 
