@@ -40,14 +40,13 @@
 #define ALERT_LON_MAX       -105.28000
 
 #define SERVO_PIN           5
-#define ANGLE_SAFE          0
-#define ANGLE_ALERT         90
+#define ANGLE_UNLOCKED      0
+#define ANGLE_LOCKED        90
 uint8_t currentAngle;
 
-#define R_LED               13 
+#define R_LED               13
 #define G_LED               12
 #define B_LED               11
-
 
 // ===================================
 // Global Objects
@@ -104,11 +103,38 @@ th {
 td {
     background-color: #2d2d2d;
 }
+button {
+    margin: 1rem;
+    padding: 1rem 2rem;
+    font-size: 1.2rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.unlock {
+    background-color: #28a745;
+    color: white;
+}
+.lock {
+    background-color: #d73a49;
+    color: white;
+}
 </style>
 </head>
 <body>
 <h1>Latest GPS Fix</h1>
 %s
+
+<div>
+    <form action="/unlock" method="post">
+       <button class="unlock" type="submit">UNLOCK</button>
+    </form>
+
+    <form action="/lock" method="post">
+       <button class="lock" type="submit">LOCK</button>
+    </form>
+</div>
+
 </body>
 </html>
 )=====";
@@ -146,10 +172,26 @@ void generateTestFix() {
 }
 
 void handleRoot() {
-    char body[1024]; 
+    char body[1024];
     String table = generateTable();
     snprintf(body, sizeof(body), HTML_PAGE, table.c_str());
     server.send(200, "text/html", body);
+}
+
+void handleUnlock() {
+    currentAngle = ANGLE_UNLOCKED;
+    servoMotor.write(currentAngle);
+    Serial.println("Manual UNLOCK");
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
+
+void handleLock() {
+    currentAngle = ANGLE_LOCKED;
+    servoMotor.write(currentAngle);
+    Serial.println("Manual LOCK");
+    server.sendHeader("Location", "/");
+    server.send(303);
 }
 
 // ===================================
@@ -185,12 +227,14 @@ void setup() {
     if (!servoMotor.attach(SERVO_PIN, 1000, 2000)) {
         Serial.println("Servo attach failed!");
     } else {
-        servoMotor.write(ANGLE_SAFE);
-        currentAngle = ANGLE_SAFE;
-        Serial.printf("Servo at %d degrees\n", ANGLE_SAFE);
+        servoMotor.write(ANGLE_UNLOCKED);
+        currentAngle = ANGLE_UNLOCKED;
+        Serial.println("Servo UNLOCKED");
     }
 
     server.on("/", handleRoot);
+    server.on("/unlock", HTTP_POST, handleUnlock);
+    server.on("/lock",   HTTP_POST, handleLock);
     server.begin();
     Serial.printf("Web server: http://%s\n", IP.toString().c_str());
 
@@ -216,22 +260,30 @@ void loop() {
 
     unsigned long now = millis();
 
+    // --------------------------
+    // TEST MODE
+    // --------------------------
     if (testMode && now >= nextTest) {
         generateTestFix();
         Serial.printf("Test update: %.6f, %.6f | RSSI: %d\n", latest.lat, latest.lon, latest.rssi);
 
+        // NEW LOGIC: inside geofence = UNLOCK
         if (inGeofence(latest.lat, latest.lon)) {
-            servoMotor.write(ANGLE_ALERT);
-            currentAngle = ANGLE_ALERT;
-            Serial.println("TEST: IN ZONE");
+            servoMotor.write(ANGLE_UNLOCKED);
+            currentAngle = ANGLE_UNLOCKED;
+            Serial.println("TEST: UNLOCKED (in zone)");
         } else {
-            servoMotor.write(ANGLE_SAFE);
-            currentAngle = ANGLE_SAFE;
-            Serial.println("TEST: OUT");
+            servoMotor.write(ANGLE_LOCKED);
+            currentAngle = ANGLE_LOCKED;
+            Serial.println("TEST: LOCKED (out)");
         }
+
         nextTest = now + INTERVAL * 1000;
     }
 
+    // --------------------------
+    // REAL LoRa RX
+    // --------------------------
     int packetSize = LoRa.parsePacket();
     if (packetSize) {
         String packet = "";
@@ -258,16 +310,18 @@ void loop() {
                 latest.test = false;
                 latest.valid = true;
 
-                Serial.printf("From %s: %.6f, %.6f | RSSI: %d\n", node.c_str(), latest.lat, latest.lon, latest.rssi);
+                Serial.printf("From %s: %.6f, %.6f | RSSI: %d\n",
+                              node.c_str(), latest.lat, latest.lon, latest.rssi);
 
+                // NEW LOGIC: inside geofence = UNLOCK
                 if (inGeofence(latest.lat, latest.lon)) {
-                    servoMotor.write(ANGLE_ALERT);
-                    currentAngle = ANGLE_ALERT;
-                    Serial.println("IN ALERT AREA!");
+                    servoMotor.write(ANGLE_UNLOCKED);
+                    currentAngle = ANGLE_UNLOCKED;
+                    Serial.println("UNLOCKED (in area)");
                 } else {
-                    servoMotor.write(ANGLE_SAFE);
-                    currentAngle = ANGLE_SAFE;
-                    Serial.println("Outside area.");
+                    servoMotor.write(ANGLE_LOCKED);
+                    currentAngle = ANGLE_LOCKED;
+                    Serial.println("LOCKED (outside)");
                 }
 
                 String ack = "ACK:" + String(NODE_ID) + ":" + String(SERVER_ID);
@@ -281,10 +335,11 @@ void loop() {
         }
     }
 
-   counter++;
-   if(counter % 65535 == 0){
-    digitalWrite(B_LED, LOW);
-    delay(1000);
-    digitalWrite(B_LED, HIGH);
-   }
+    // Debug LED tick
+    counter++;
+    if (counter % 65535 == 0) {
+        digitalWrite(B_LED, LOW);
+        delay(1000);
+        digitalWrite(B_LED, HIGH);
+    }
 }
