@@ -163,8 +163,16 @@ bool inGeofence(float lat, float lon) {
 }
 
 void generateTestFix() {
-    latest.lat = random(TEST_LAT_MIN * 1e6, TEST_LAT_MAX * 1e6) / 1e6;
-    latest.lon = random(TEST_LON_MIN * 1e6, TEST_LON_MAX * 1e6) / 1e6;
+    long latMin = (long)(TEST_LAT_MIN * 1e6);
+    long latMax = (long)(TEST_LAT_MAX * 1e6);
+    long lonMin = (long)(TEST_LON_MIN * 1e6);
+    long lonMax = (long)(TEST_LON_MAX * 1e6);
+
+    long latVal = random(latMin, latMax);
+    long lonVal = random(lonMin, lonMax);
+
+    latest.lat = latVal / 1e6;
+    latest.lon = lonVal / 1e6;
     latest.rssi = random(-110, -35);
     latest.test = true;
     latest.valid = true;
@@ -183,7 +191,7 @@ void handleUnlock() {
     servoMotor.write(currentAngle);
     Serial.println("Manual UNLOCK");
     server.sendHeader("Location", "/");
-    server.send(303);
+    server.send(303, "text/plain", "");
 }
 
 void handleLock() {
@@ -191,7 +199,7 @@ void handleLock() {
     servoMotor.write(currentAngle);
     Serial.println("Manual LOCK");
     server.sendHeader("Location", "/");
-    server.send(303);
+    server.send(303, "text/plain", "");
 }
 
 // ===================================
@@ -214,17 +222,17 @@ void setup() {
     pinMode(PIN_LORA_EN, OUTPUT);
     digitalWrite(PIN_LORA_EN, HIGH);
 
-    SPI.begin();
+    SPI.begin(PIN_LORA_SCK, PIN_LORA_MISO, PIN_LORA_MOSI, PIN_LORA_CS);
 
     LoRa.setPins(PIN_LORA_CS, PIN_LORA_RESET, PIN_LORA_DIO0);
-    if (!LoRa.begin(LORA_FREQ_MHZ * 1E6)) {
+    if (!LoRa.begin((uint32_t)(LORA_FREQ_MHZ * 1E6))) {
         Serial.println("LoRa init failed!");
         while (1);
     }
     LoRa.setTxPower(20);
     Serial.println("LoRa ready");
 
-    if (!servoMotor.attach(SERVO_PIN, 1000, 2000)) {
+    if (servoMotor.attach(SERVO_PIN, 1000, 2000) == 0) {
         Serial.println("Servo attach failed!");
     } else {
         servoMotor.write(ANGLE_UNLOCKED);
@@ -238,8 +246,10 @@ void setup() {
     server.begin();
     Serial.printf("Web server: http://%s\n", IP.toString().c_str());
 
+    randomSeed(micros());
+
     if (testMode) {
-        nextTest = millis() + random(TEST_DELAY_MIN, TEST_DELAY_MAX) * 1000;
+        nextTest = millis() + (unsigned long)random(TEST_DELAY_MIN, TEST_DELAY_MAX) * 1000UL;
     } else {
         nextTest = ULONG_MAX;
     }
@@ -267,7 +277,6 @@ void loop() {
         generateTestFix();
         Serial.printf("Test update: %.6f, %.6f | RSSI: %d\n", latest.lat, latest.lon, latest.rssi);
 
-        // NEW LOGIC: inside geofence = UNLOCK
         if (inGeofence(latest.lat, latest.lon)) {
             servoMotor.write(ANGLE_UNLOCKED);
             currentAngle = ANGLE_UNLOCKED;
@@ -313,7 +322,6 @@ void loop() {
                 Serial.printf("From %s: %.6f, %.6f | RSSI: %d\n",
                               node.c_str(), latest.lat, latest.lon, latest.rssi);
 
-                // NEW LOGIC: inside geofence = UNLOCK
                 if (inGeofence(latest.lat, latest.lon)) {
                     servoMotor.write(ANGLE_UNLOCKED);
                     currentAngle = ANGLE_UNLOCKED;
